@@ -1,0 +1,403 @@
+openapi: 3.0.3
+info:
+  description: |
+    Учебный API управления подписчиками Telegram-отчётов об автопарке.
+    Основан на api/v1/subscribers.py и публичных схемах проекта petrovich_ai.
+    Позволяет настроить получателя и время ежедневного отчёта.
+    Это проектируемый контракт, а не точная копия работающего сервиса:
+    добавлен GET одного подписчика, POST и DELETE возвращают 200 вместо
+    исходных 201 и 204; ошибки валидации представлены ответом 400.
+    Время рассылки задаётся в часовом поясе сервиса.
+    Аутентификация исходным разделом API не предусмотрена.
+    403 при создании означает запрет рассылки в указанный Telegram-чат.
+  title: Petrovich AI — подписчики отчётов
+  version: 1.0.0
+servers:
+- description: Локальный адрес будущего учебного сервиса
+  url: http://localhost:8080/api/v1
+tags:
+- description: Получатели ежедневных отчётов Петровича
+  name: Subscribers
+paths:
+  /subscribers:
+    get:
+      description: "Возвращает всех подписчиков по возрастанию id, включая неактив\
+        ных."
+      operationId: listSubscribers
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/SubscriberResponse'
+                type: array
+          description: Список подписчиков; при отсутствии подписчиков — пустой массив.
+        "500":
+          content:
+            application/json:
+              example:
+                detail: Unable to load subscribers
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Внутренняя ошибка сервиса при получении списка подписчиков.
+      summary: Получить список подписчиков
+      tags:
+      - Subscribers
+      x-accepts:
+      - application/json
+      x-tags:
+      - tag: Subscribers
+    post:
+      description: |
+        Чат должен входить в разрешённый сервером список ALLOWED_CHAT_IDS.
+        Если chat_id уже существует, обновляет время, заменяет имя при передаче
+        непустого name и включает подписку. Иначе создаёт активную подписку.
+      operationId: createSubscriber
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriberRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriberResponse'
+          description: Подписка создана или возобновлена.
+        "400":
+          content:
+            application/json:
+              example:
+                detail: schedule_time must be HH:MM (24h)
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Некорректный JSON, тип поля, идентификатор или время (ожид\
+            ается HH:MM)."
+        "403":
+          content:
+            application/json:
+              example:
+                detail: chat_id not in ALLOWED_CHAT_IDS allowlist
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Указанный chat_id отсутствует в списке разрешённых чатов.
+      summary: Создать или возобновить подписку на отчёты
+      tags:
+      - Subscribers
+      x-content-type: application/json
+      x-accepts:
+      - application/json
+      x-tags:
+      - tag: Subscribers
+  /subscribers/{subscriber_id}:
+    delete:
+      description: Удаляет подписчика. Повторное удаление возвращает 404.
+      operationId: deleteSubscriber
+      parameters:
+      - description: "Идентификатор подписчика в сервисе, а не Telegram chat_id."
+        example: 1
+        explode: false
+        in: path
+        name: subscriber_id
+        required: true
+        schema:
+          format: int64
+          minimum: 1
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteSubscriberResponse'
+          description: Подписка удалена.
+        "400":
+          content:
+            application/json:
+              example:
+                detail: schedule_time must be HH:MM (24h)
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Некорректный JSON, тип поля, идентификатор или время (ожид\
+            ается HH:MM)."
+        "404":
+          content:
+            application/json:
+              example:
+                detail: subscriber not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Подписчик с указанным subscriber_id не существует.
+      summary: Удалить подписку на отчёты
+      tags:
+      - Subscribers
+      x-accepts:
+      - application/json
+      x-tags:
+      - tag: Subscribers
+    get:
+      operationId: getSubscriber
+      parameters:
+      - description: "Идентификатор подписчика в сервисе, а не Telegram chat_id."
+        example: 1
+        explode: false
+        in: path
+        name: subscriber_id
+        required: true
+        schema:
+          format: int64
+          minimum: 1
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriberResponse'
+          description: Подписчик найден.
+        "400":
+          content:
+            application/json:
+              example:
+                detail: schedule_time must be HH:MM (24h)
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Некорректный JSON, тип поля, идентификатор или время (ожид\
+            ается HH:MM)."
+        "404":
+          content:
+            application/json:
+              example:
+                detail: subscriber not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Подписчик с указанным subscriber_id не существует.
+      summary: Получить одного подписчика
+      tags:
+      - Subscribers
+      x-accepts:
+      - application/json
+      x-tags:
+      - tag: Subscribers
+    patch:
+      description: |
+        Изменяет только переданные ненулевые поля. Отсутствующие поля и null
+        сохраняют прежние значения. Пустой объект допустим и ничего не меняет.
+        chat_id изменить нельзя; active=false приостанавливает рассылку.
+      operationId: updateSubscriber
+      parameters:
+      - description: "Идентификатор подписчика в сервисе, а не Telegram chat_id."
+        example: 1
+        explode: false
+        in: path
+        name: subscriber_id
+        required: true
+        schema:
+          format: int64
+          minimum: 1
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriberRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriberResponse'
+          description: Подписчик с актуальными настройками.
+        "400":
+          content:
+            application/json:
+              example:
+                detail: schedule_time must be HH:MM (24h)
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Некорректный JSON, тип поля, идентификатор или время (ожид\
+            ается HH:MM)."
+        "404":
+          content:
+            application/json:
+              example:
+                detail: subscriber not found
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Подписчик с указанным subscriber_id не существует.
+      summary: Изменить настройки подписки
+      tags:
+      - Subscribers
+      x-content-type: application/json
+      x-accepts:
+      - application/json
+      x-tags:
+      - tag: Subscribers
+components:
+  parameters:
+    SubscriberId:
+      description: "Идентификатор подписчика в сервисе, а не Telegram chat_id."
+      example: 1
+      explode: false
+      in: path
+      name: subscriber_id
+      required: true
+      schema:
+        format: int64
+        minimum: 1
+        type: integer
+      style: simple
+  responses:
+    BadRequest:
+      content:
+        application/json:
+          example:
+            detail: schedule_time must be HH:MM (24h)
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      description: "Некорректный JSON, тип поля, идентификатор или время (ожидаетс\
+        я HH:MM)."
+    NotFound:
+      content:
+        application/json:
+          example:
+            detail: subscriber not found
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      description: Подписчик с указанным subscriber_id не существует.
+    InternalError:
+      content:
+        application/json:
+          example:
+            detail: Unable to load subscribers
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+      description: Внутренняя ошибка сервиса при получении списка подписчиков.
+  schemas:
+    CreateSubscriberRequest:
+      additionalProperties: false
+      example:
+        schedule_time: 09:30
+        name: Диспетчер автопарка
+        chat_id: -1001234567890
+      properties:
+        chat_id:
+          description: Telegram chat_id; для групп может быть отрицательным.
+          example: -1001234567890
+          format: int64
+          type: integer
+        name:
+          example: Диспетчер автопарка
+          maxLength: 128
+          nullable: true
+          type: string
+        schedule_time:
+          default: 09:30
+          description: "Время ежедневной рассылки, HH:MM, 24-часовой формат."
+          example: 09:30
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          type: string
+      required:
+      - chat_id
+      type: object
+    UpdateSubscriberRequest:
+      additionalProperties: false
+      example:
+        schedule_time: 08:00
+        name: Старший диспетчер
+        active: false
+      properties:
+        name:
+          example: Старший диспетчер
+          maxLength: 128
+          nullable: true
+          type: string
+        schedule_time:
+          example: 08:00
+          nullable: true
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          type: string
+        active:
+          example: false
+          nullable: true
+          type: boolean
+      type: object
+    SubscriberResponse:
+      example:
+        schedule_time: 09:30
+        name: Диспетчер автопарка
+        active: true
+        id: 1
+        chat_id: -1001234567890
+        username: dispatcher
+      properties:
+        id:
+          example: 1
+          format: int64
+          minimum: 1
+          type: integer
+        chat_id:
+          example: -1001234567890
+          format: int64
+          type: integer
+        name:
+          example: Диспетчер автопарка
+          maxLength: 128
+          nullable: true
+          type: string
+        username:
+          description: "Telegram username, если он известен сервису."
+          example: dispatcher
+          maxLength: 64
+          nullable: true
+          type: string
+        schedule_time:
+          example: 09:30
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          type: string
+        active:
+          example: true
+          type: boolean
+      required:
+      - active
+      - chat_id
+      - id
+      - name
+      - schedule_time
+      - username
+      type: object
+    DeleteSubscriberResponse:
+      example:
+        deleted: true
+        id: 1
+      properties:
+        id:
+          example: 1
+          format: int64
+          minimum: 1
+          type: integer
+        deleted:
+          example: true
+          type: boolean
+      required:
+      - deleted
+      - id
+      type: object
+    ErrorResponse:
+      example:
+        detail: subscriber not found
+      properties:
+        detail:
+          description: "Причина ошибки, пригодная для отображения пользователю."
+          example: subscriber not found
+          type: string
+      required:
+      - detail
+      type: object
