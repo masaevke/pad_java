@@ -1,0 +1,40 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: homework
+      RABBITMQ_DEFAULT_PASS: homework
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  service-a:
+    build:
+      context: ./service-a
+      dockerfile: ../Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: homework
+      SPRING_RABBITMQ_PASSWORD: homework
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  service-b:
+    build:
+      context: ./service-b
+      dockerfile: ../Dockerfile
+    environment:
+      JOB_DEMO_ACK_DELAY_MS: ${JOB_DEMO_ACK_DELAY_MS:-0}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: homework
+      SPRING_RABBITMQ_PASSWORD: homework
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
